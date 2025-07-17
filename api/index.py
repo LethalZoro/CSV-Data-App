@@ -18,7 +18,10 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 # Database configuration
 DATABASE_URL = os.environ.get('DATABASE_URL')
 if DATABASE_URL:
-    # For production (online database)
+    # For production (online database) - Convert psycopg2 URL to pg8000 format
+    if DATABASE_URL.startswith('postgresql://'):
+        # Replace postgresql:// with postgresql+pg8000:// for pg8000 driver
+        DATABASE_URL = DATABASE_URL.replace('postgresql://', 'postgresql+pg8000://')
     app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
 else:
     # For local development - use in-memory SQLite for Vercel
