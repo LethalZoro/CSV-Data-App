@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSV Data Upload & Viewer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        .upload-section {
+            background: #f8fafc;
+            border: 2px dashed #cbd5e1;
+            border-radius: 12px;
+            padding: 40px;
+            text-align: center;
+            margin-bottom: 40px;
+            transition: all 0.3s ease;
+        }
+
+        .upload-section:hover {
+            border-color: #4f46e5;
+            background: #f1f5f9;
+        }
+
+        .upload-section.dragover {
+            border-color: #4f46e5;
+            background: #e0e7ff;
+        }
+
+        .upload-icon {
+            font-size: 3rem;
+            color: #64748b;
+            margin-bottom: 20px;
+        }
+
+        .file-input-wrapper {
+            position: relative;
+            overflow: hidden;
+            display: inline-block;
+        }
+
+        .file-input {
+            position: absolute;
+            left: -9999px;
+        }
+
+        .file-input-button {
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            margin: 10px;
+        }
+
+        .file-input-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(79, 70, 229, 0.3);
+        }
+
+        .upload-button {
+            background: linear-gradient(135deg, #059669 0%, #047857 100%);
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            margin: 10px;
+            display: none;
+        }
+
+        .upload-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(5, 150, 105, 0.3);
+        }
+
+        .status-message {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 8px;
+            font-weight: 500;
+            display: none;
+        }
+
+        .status-success {
+            background: #dcfce7;
+            color: #166534;
+            border: 1px solid #bbf7d0;
+        }
+
+        .status-error {
+            background: #fef2f2;
+            color: #dc2626;
+            border: 1px solid #fecaca;
+        }
+
+        .data-section {
+            margin-top: 40px;
+        }
+
+        .section-title {
+            font-size: 1.5rem;
+            color: #1e293b;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .uploads-list {
+            margin-bottom: 30px;
+        }
+
+        .upload-item {
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            margin-bottom: 15px;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .upload-item:hover {
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .upload-header {
+            padding: 20px;
+            background: #f8fafc;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .upload-info {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .filename {
+            font-weight: 600;
+            color: #1e293b;
+            font-size: 1.1rem;
+        }
+
+        .upload-meta {
+            font-size: 0.9rem;
+            color: #64748b;
+        }
+
+        .status-badge {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-completed {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .status-processing {
+            background: #fef3c7;
+            color: #d97706;
+        }
+
+        .status-failed {
+            background: #fef2f2;
+            color: #dc2626;
+        }
+
+        .upload-content {
+            padding: 20px;
+            display: none;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+
+        .data-table th,
+        .data-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .data-table th {
+            background: #f1f5f9;
+            font-weight: 600;
+            color: #374151;
+        }
+
+        .data-table tr:hover {
+            background: #f8fafc;
+        }
+
+        .loading {
+            text-align: center;
+            color: #64748b;
+            font-style: italic;
+        }
+
+        .empty-state {
+            text-align: center;
+            color: #64748b;
+            font-style: italic;
+            padding: 40px;
+        }
+
+        .expand-arrow {
+            transition: transform 0.3s ease;
+        }
+
+        .expand-arrow.expanded {
+            transform: rotate(180deg);
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                margin: 10px;
+                border-radius: 10px;
+            }
+            
+            .content {
+                padding: 20px;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .upload-section {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 CSV Data Manager</h1>
+            <p>Upload, store, and view your CSV data with ease</p>
+        </div>
+
+        <div class="content">
+            <!-- Upload Section -->
+            <div class="upload-section" id="uploadSection">
+                <div class="upload-icon">📤</div>
+                <h3>Upload CSV File</h3>
+                <p>Select a CSV file to upload and store in the database</p>
+                
+                <div class="file-input-wrapper">
+                    <input type="file" id="csvFile" class="file-input" accept=".csv">
+                    <button class="file-input-button" onclick="document.getElementById('csvFile').click()">
+                        Choose File
+                    </button>
+                </div>
+                
+                <button class="upload-button" id="uploadBtn" onclick="uploadFile()">
+                    Upload to Database
+                </button>
+                
+                <div id="selectedFile" style="margin-top: 15px; color: #64748b;"></div>
+            </div>
+
+            <!-- Status Message -->
+            <div id="statusMessage" class="status-message"></div>
+
+            <!-- Data Section -->
+            <div class="data-section">
+                <div class="section-title">
+                    <span>🗃️ Uploaded Files</span>
+                    <button onclick="loadUploads()" style="background: #4f46e5; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer;">
+                        Refresh
+                    </button>
+                </div>
+                
+                <div id="uploadsContainer" class="uploads-list">
+                    <div class="loading">Loading uploads...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let selectedFile = null;
+
+        // File selection handler
+        document.getElementById('csvFile').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                selectedFile = file;
+                document.getElementById('selectedFile').innerHTML = `Selected: <strong>${file.name}</strong> (${(file.size / 1024).toFixed(1)} KB)`;
+                document.getElementById('uploadBtn').style.display = 'inline-block';
+            }
+        });
+
+        // Drag and drop functionality
+        const uploadSection = document.getElementById('uploadSection');
+        
+        uploadSection.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            uploadSection.classList.add('dragover');
+        });
+        
+        uploadSection.addEventListener('dragleave', function(e) {
+            e.preventDefault();
+            uploadSection.classList.remove('dragover');
+        });
+        
+        uploadSection.addEventListener('drop', function(e) {
+            e.preventDefault();
+            uploadSection.classList.remove('dragover');
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0 && files[0].name.endsWith('.csv')) {
+                selectedFile = files[0];
+                document.getElementById('selectedFile').innerHTML = `Selected: <strong>${files[0].name}</strong> (${(files[0].size / 1024).toFixed(1)} KB)`;
+                document.getElementById('uploadBtn').style.display = 'inline-block';
+            }
+        });
+
+        // Upload file function
+        async function uploadFile() {
+            if (!selectedFile) {
+                showStatus('Please select a file first', 'error');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+
+            try {
+                showStatus('Uploading and processing CSV...', 'info');
+                document.getElementById('uploadBtn').disabled = true;
+                
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showStatus(`✅ ${result.message}`, 'success');
+                    selectedFile = null;
+                    document.getElementById('csvFile').value = '';
+                    document.getElementById('selectedFile').innerHTML = '';
+                    document.getElementById('uploadBtn').style.display = 'none';
+                    loadUploads(); // Refresh the uploads list
+                } else {
+                    showStatus(`❌ ${result.message}`, 'error');
+                }
+            } catch (error) {
+                showStatus(`❌ Upload failed: ${error.message}`, 'error');
+            } finally {
+                document.getElementById('uploadBtn').disabled = false;
+            }
+        }
+
+        // Show status message
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('statusMessage');
+            statusDiv.className = `status-message status-${type}`;
+            statusDiv.innerHTML = message;
+            statusDiv.style.display = 'block';
+            
+            if (type === 'success') {
+                setTimeout(() => {
+                    statusDiv.style.display = 'none';
+                }, 5000);
+            }
+        }
+
+        // Load uploads list
+        async function loadUploads() {
+            try {
+                const response = await fetch('/uploads');
+                const result = await response.json();
+
+                const container = document.getElementById('uploadsContainer');
+
+                if (result.success && result.uploads.length > 0) {
+                    container.innerHTML = result.uploads.map(upload => `
+                        <div class="upload-item">
+                            <div class="upload-header" onclick="toggleUpload(${upload.id})">
+                                <div class="upload-info">
+                                    <div class="filename">${upload.filename}</div>
+                                    <div class="upload-meta">
+                                        ${new Date(upload.upload_date).toLocaleString()} • ${upload.total_rows} rows
+                                    </div>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <span class="status-badge status-${upload.status}">${upload.status}</span>
+                                    <span class="expand-arrow" id="arrow-${upload.id}">▼</span>
+                                </div>
+                            </div>
+                            <div class="upload-content" id="content-${upload.id}">
+                                <div class="loading">Loading data...</div>
+                            </div>
+                        </div>
+                    `).join('');
+                } else {
+                    container.innerHTML = '<div class="empty-state">No uploads found. Upload a CSV file to get started!</div>';
+                }
+            } catch (error) {
+                document.getElementById('uploadsContainer').innerHTML = `<div class="empty-state">Error loading uploads: ${error.message}</div>`;
+            }
+        }
+
+        // Toggle upload content
+        async function toggleUpload(uploadId) {
+            const content = document.getElementById(`content-${uploadId}`);
+            const arrow = document.getElementById(`arrow-${uploadId}`);
+
+            if (content.style.display === 'block') {
+                content.style.display = 'none';
+                arrow.classList.remove('expanded');
+            } else {
+                content.style.display = 'block';
+                arrow.classList.add('expanded');
+                
+                // Load data if not already loaded
+                if (content.innerHTML.includes('Loading data...')) {
+                    try {
+                        const response = await fetch(`/upload/${uploadId}/data`);
+                        const result = await response.json();
+
+                        if (result.success && result.data.length > 0) {
+                            const firstRow = result.data[0].row_data;
+                            const headers = Object.keys(firstRow);
+
+                            content.innerHTML = `
+                                <div style="margin-bottom: 15px;">
+                                    <strong>File:</strong> ${result.upload.filename} | 
+                                    <strong>Rows:</strong> ${result.upload.total_rows} | 
+                                    <strong>Status:</strong> ${result.upload.status}
+                                </div>
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Row #</th>
+                                            ${headers.map(header => `<th>${header}</th>`).join('')}
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${result.data.map(row => `
+                                            <tr>
+                                                <td>${row.row_number}</td>
+                                                ${headers.map(header => `<td>${row.row_data[header] || ''}</td>`).join('')}
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            `;
+                        } else {
+                            content.innerHTML = '<div class="empty-state">No data found for this upload.</div>';
+                        }
+                    } catch (error) {
+                        content.innerHTML = `<div class="empty-state">Error loading data: ${error.message}</div>`;
+                    }
+                }
+            }
+        }
+
+        // Load uploads on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadUploads();
+        });
+    </script>
+</body>
+</html>
