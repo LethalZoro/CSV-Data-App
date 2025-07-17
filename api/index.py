@@ -1,9 +1,3 @@
-"""
-CSV Data Manager - Vercel Serverless Function
-Handles CSV file uploads and database storage
-Version: 2.0 - No pandas dependency, pure Python CSV processing
-Updated: 2025-07-17
-"""
 
 from flask import Flask, request, render_template, jsonify
 from flask_sqlalchemy import SQLAlchemy
