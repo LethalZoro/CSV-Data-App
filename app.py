@@ -22,10 +22,31 @@ if DATABASE_URL:
     # For production (Render provides PostgreSQL URLs)
     if DATABASE_URL.startswith('postgres://'):
         DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://')
-    app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
+    
+    # Test if we can connect to the database
+    try:
+        import sqlalchemy
+        test_engine = sqlalchemy.create_engine(DATABASE_URL)
+        with test_engine.connect() as conn:
+            conn.execute(sqlalchemy.text('SELECT 1'))
+        app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
+        print("✅ Connected to remote PostgreSQL database")
+    except Exception as e:
+        print(f"❌ Cannot connect to remote database: {e}")
+        print("🔄 Falling back to local SQLite database")
+        app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///fallback_csv_data.db'
+    
+    # Add connection pool settings for better reliability
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+        'pool_timeout': 20,
+        'pool_recycle': 300,
+        'pool_pre_ping': True,
+        'max_overflow': 0,
+    }
 else:
     # For local development
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///csv_data.db'
+    print("🔧 Using local SQLite database for development")
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = os.getenv('UPLOAD_FOLDER', 'uploads')
@@ -82,7 +103,12 @@ def index():
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
+    upload_record = None
     try:
+        # Ensure database is initialized
+        with app.app_context():
+            db.create_all()
+        
         if 'file' not in request.files:
             return jsonify({'success': False, 'message': 'No file selected'})
         
@@ -99,50 +125,75 @@ def upload_file():
             try:
                 df = pd.read_csv(filepath)
                 
-                # Create upload record
-                upload_record = CSVUpload(
-                    filename=filename,
-                    total_rows=len(df),
-                    status='processing'
-                )
-                db.session.add(upload_record)
-                db.session.commit()
-                
-                # Store each row in the database
-                for index, row in df.iterrows():
-                    row_data = CSVData(
-                        upload_id=upload_record.id,
-                        row_data=json.dumps(row.to_dict()),
-                        row_number=index + 1
+                # Start a new transaction
+                try:
+                    # Create upload record
+                    upload_record = CSVUpload(
+                        filename=filename,
+                        total_rows=len(df),
+                        status='processing'
                     )
-                    db.session.add(row_data)
-                
-                # Update status to completed
-                upload_record.status = 'completed'
-                db.session.commit()
-                
-                # Clean up uploaded file
-                os.remove(filepath)
-                
-                return jsonify({
-                    'success': True, 
-                    'message': f'CSV uploaded successfully! {len(df)} rows processed.',
-                    'upload_id': upload_record.id,
-                    'total_rows': len(df)
-                })
-                
-            except Exception as e:
-                # Update status to failed
-                if 'upload_record' in locals():
-                    upload_record.status = 'failed'
+                    db.session.add(upload_record)
+                    db.session.flush()  # Get the ID without committing
+                    
+                    # Store each row in the database
+                    for index, row in df.iterrows():
+                        row_data = CSVData(
+                            upload_id=upload_record.id,
+                            row_data=json.dumps(row.to_dict()),
+                            row_number=index + 1
+                        )
+                        db.session.add(row_data)
+                    
+                    # Update status to completed
+                    upload_record.status = 'completed'
                     db.session.commit()
+                    
+                    # Clean up uploaded file
+                    if os.path.exists(filepath):
+                        os.remove(filepath)
+                    
+                    return jsonify({
+                        'success': True, 
+                        'message': f'CSV uploaded successfully! {len(df)} rows processed.',
+                        'upload_id': upload_record.id,
+                        'total_rows': len(df)
+                    })
+                    
+                except Exception as db_error:
+                    # Rollback the transaction
+                    db.session.rollback()
+                    
+                    # Try to update status to failed if record exists
+                    if upload_record and upload_record.id:
+                        try:
+                            upload_record.status = 'failed'
+                            db.session.add(upload_record)
+                            db.session.commit()
+                        except:
+                            db.session.rollback()
+                    
+                    # Clean up uploaded file
+                    if os.path.exists(filepath):
+                        os.remove(filepath)
+                    
+                    return jsonify({'success': False, 'message': f'Database error: {str(db_error)}'})
                 
-                return jsonify({'success': False, 'message': f'Error processing CSV: {str(e)}'})
+            except Exception as csv_error:
+                # Clean up uploaded file
+                if os.path.exists(filepath):
+                    os.remove(filepath)
+                return jsonify({'success': False, 'message': f'Error processing CSV: {str(csv_error)}'})
         
         else:
             return jsonify({'success': False, 'message': 'Invalid file type. Please upload a CSV file.'})
             
     except Exception as e:
+        # Ensure session is rolled back in case of any error
+        try:
+            db.session.rollback()
+        except:
+            pass
         return jsonify({'success': False, 'message': f'Upload failed: {str(e)}'})
 
 @app.route('/uploads')
@@ -173,22 +224,66 @@ def get_upload_data(upload_id):
 @app.route('/debug')
 def debug_info():
     """Debug endpoint to check deployment status"""
+    import sys
+    db_info = {}
+    try:
+        # Get database connection info
+        db_uri = app.config['SQLALCHEMY_DATABASE_URI']
+        if '@' in db_uri:
+            db_info['host'] = db_uri.split('@')[1].split('/')[0]
+            db_info['type'] = 'postgresql' if 'postgresql' in db_uri else 'other'
+        else:
+            db_info['type'] = 'sqlite'
+            db_info['file'] = db_uri.replace('sqlite:///', '')
+    except:
+        db_info['error'] = 'Could not parse database URI'
+    
     return jsonify({
         'status': 'Flask app is running on Render',
         'python_version': sys.version,
         'database_url_set': bool(os.environ.get('DATABASE_URL')),
+        'database_info': db_info,
         'environment': 'production' if os.environ.get('DATABASE_URL') else 'development',
         'routes': [str(rule) for rule in app.url_map.iter_rules()]
     })
 
+@app.route('/status')
+def simple_status():
+    """Simple status endpoint that doesn't require database"""
+    return jsonify({
+        'status': 'running',
+        'timestamp': datetime.utcnow().isoformat(),
+        'environment': 'production' if os.environ.get('DATABASE_URL') else 'development'
+    })
+
 @app.route('/health')
 def health_check():
+    status = {'status': 'healthy', 'components': {}}
+    http_status = 200
+    
     try:
         # Test database connection
-        db.session.execute('SELECT 1')
-        return jsonify({'status': 'healthy', 'database': 'connected'})
+        with db.engine.connect() as connection:
+            connection.execute(db.text('SELECT 1'))
+        status['components']['database'] = 'connected'
     except Exception as e:
-        return jsonify({'status': 'unhealthy', 'error': str(e)}), 500
+        status['status'] = 'unhealthy'
+        status['components']['database'] = f'error: {str(e)}'
+        http_status = 500
+    
+    # Check if we can write to upload folder
+    try:
+        test_file = os.path.join(app.config['UPLOAD_FOLDER'], 'test.txt')
+        with open(test_file, 'w') as f:
+            f.write('test')
+        os.remove(test_file)
+        status['components']['filesystem'] = 'writable'
+    except Exception as e:
+        if status['status'] != 'unhealthy':
+            status['status'] = 'degraded'
+        status['components']['filesystem'] = f'error: {str(e)}'
+    
+    return jsonify(status), http_status
 
 if __name__ == '__main__':
     with app.app_context():
