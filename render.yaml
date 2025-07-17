@@ -8,4 +8,4 @@ services:
       - key: FLASK_SECRET_KEY
         generateValue: true
       - key: PYTHON_VERSION
-        value: "3.9.16"
+        value: "3.11.7"

@@ -1,7 +1,9 @@
-Flask==2.3.3
-SQLAlchemy==2.0.21
-Flask-SQLAlchemy==3.0.5
-pg8000==1.30.2
-Werkzeug==2.3.7
-psycopg2
-gunicorn==21.2.0
+Flask
+SQLAlchemy
+Flask-SQLAlchemy
+pg8000
+Werkzeug
+psycopg2-binary
+gunicorn
+pandas
+python-dotenv
