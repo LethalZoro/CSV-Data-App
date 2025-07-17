@@ -1,7 +1,7 @@
 from flask import Flask, request, render_template, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.utils import secure_filename
-import pandas as pd
+import csv
 import os
 from datetime import datetime
 import json
@@ -63,9 +63,18 @@ class CSVData(db.Model):
             'row_number': self.row_number
         }
 
-# Create tables
-with app.app_context():
-    db.create_all()
+# Database initialization flag
+_db_initialized = False
+
+def ensure_db_initialized():
+    """Ensure database tables exist"""
+    global _db_initialized
+    if not _db_initialized:
+        try:
+            db.create_all()
+            _db_initialized = True
+        except Exception as e:
+            print(f"Database initialization error: {e}")
 
 # Allowed file extensions
 ALLOWED_EXTENSIONS = {'csv'}
@@ -75,10 +84,12 @@ def allowed_file(filename):
 
 @app.route('/')
 def index():
+    ensure_db_initialized()
     return render_template('index.html')
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
+    ensure_db_initialized()
     try:
         if 'file' not in request.files:
             return jsonify({'success': False, 'message': 'No file selected'})
@@ -95,24 +106,30 @@ def upload_file():
             
             # Parse CSV from memory
             try:
-                # Convert bytes to string and then to StringIO for pandas
+                # Convert bytes to string and then parse with csv module
                 csv_string = file_content.decode('utf-8')
-                df = pd.read_csv(io.StringIO(csv_string))
+                csv_reader = csv.DictReader(io.StringIO(csv_string))
+                
+                # Convert to list to get count and process rows
+                rows = list(csv_reader)
+                
+                if not rows:
+                    return jsonify({'success': False, 'message': 'CSV file is empty or invalid'})
                 
                 # Create upload record
                 upload_record = CSVUpload(
                     filename=filename,
-                    total_rows=len(df),
+                    total_rows=len(rows),
                     status='processing'
                 )
                 db.session.add(upload_record)
                 db.session.commit()
                 
                 # Store each row in the database
-                for index, row in df.iterrows():
+                for index, row in enumerate(rows):
                     row_data = CSVData(
                         upload_id=upload_record.id,
-                        row_data=json.dumps(row.to_dict()),
+                        row_data=json.dumps(row),
                         row_number=index + 1
                     )
                     db.session.add(row_data)
@@ -123,9 +140,9 @@ def upload_file():
                 
                 return jsonify({
                     'success': True, 
-                    'message': f'CSV uploaded successfully! {len(df)} rows processed.',
+                    'message': f'CSV uploaded successfully! {len(rows)} rows processed.',
                     'upload_id': upload_record.id,
-                    'total_rows': len(df)
+                    'total_rows': len(rows)
                 })
                 
             except Exception as e:
@@ -144,6 +161,7 @@ def upload_file():
 
 @app.route('/uploads')
 def get_uploads():
+    ensure_db_initialized()
     try:
         uploads = CSVUpload.query.order_by(CSVUpload.upload_date.desc()).all()
         return jsonify({
@@ -155,6 +173,7 @@ def get_uploads():
 
 @app.route('/upload/<int:upload_id>/data')
 def get_upload_data(upload_id):
+    ensure_db_initialized()
     try:
         upload = CSVUpload.query.get_or_404(upload_id)
         data_rows = CSVData.query.filter_by(upload_id=upload_id).order_by(CSVData.row_number).all()

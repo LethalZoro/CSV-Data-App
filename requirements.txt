@@ -1,5 +1,4 @@
 Flask==2.3.3
-pandas==2.1.1
 SQLAlchemy==2.0.21
 Flask-SQLAlchemy==3.0.5
 pg8000==1.30.2
