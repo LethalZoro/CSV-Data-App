@@ -1,4 +1,3 @@
-
 from flask import Flask, request, render_template, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.utils import secure_filename
@@ -19,9 +18,12 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 # Database configuration
 DATABASE_URL = os.environ.get('DATABASE_URL')
 if DATABASE_URL:
-    # For production (online database) - Convert psycopg2 URL to pg8000 format
+    # For production (online database)
+    if DATABASE_URL.startswith('postgres://'):
+        # Heroku/Railway style URLs - convert to postgresql://
+        DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://')
     if DATABASE_URL.startswith('postgresql://'):
-        # Replace postgresql:// with postgresql+pg8000:// for pg8000 driver
+        # Convert to pg8000 driver for better compatibility
         DATABASE_URL = DATABASE_URL.replace('postgresql://', 'postgresql+pg8000://')
     app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
 else:
@@ -187,6 +189,18 @@ def get_upload_data(upload_id):
     except Exception as e:
         return jsonify({'success': False, 'message': f'Error fetching data: {str(e)}'})
 
+@app.route('/debug')
+def debug_info():
+    """Debug endpoint to check deployment status"""
+    import sys
+    return jsonify({
+        'status': 'Flask app is running',
+        'python_version': sys.version,
+        'database_url_set': bool(os.environ.get('DATABASE_URL')),
+        'environment': 'production' if os.environ.get('DATABASE_URL') else 'development',
+        'routes': [str(rule) for rule in app.url_map.iter_rules()]
+    })
+
 @app.route('/health')
 def health_check():
     try:
@@ -196,10 +210,9 @@ def health_check():
     except Exception as e:
         return jsonify({'status': 'unhealthy', 'error': str(e)}), 500
 
-# This is the main handler for Vercel
-def handler(request):
-    return app(request.environ, lambda status, headers: None)
-
 # For local development
 if __name__ == '__main__':
     app.run(debug=True)
+
+# Export the app for Vercel (this must be at module level)
+# Vercel looks for an 'app' variable or a 'handler' function
