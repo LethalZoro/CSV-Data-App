@@ -6,13 +6,27 @@ import os
 from datetime import datetime
 from dotenv import load_dotenv
 import json
+import csv
+import io
+import sys
 
 # Load environment variables
 load_dotenv()
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'dev-key-change-in-production')
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///csv_data.db')
+
+# Enhanced database configuration for Render
+DATABASE_URL = os.getenv('DATABASE_URL')
+if DATABASE_URL:
+    # For production (Render provides PostgreSQL URLs)
+    if DATABASE_URL.startswith('postgres://'):
+        DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://')
+    app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
+else:
+    # For local development
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///csv_data.db'
+
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = os.getenv('UPLOAD_FOLDER', 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
@@ -156,6 +170,17 @@ def get_upload_data(upload_id):
     except Exception as e:
         return jsonify({'success': False, 'message': f'Error fetching data: {str(e)}'})
 
+@app.route('/debug')
+def debug_info():
+    """Debug endpoint to check deployment status"""
+    return jsonify({
+        'status': 'Flask app is running on Render',
+        'python_version': sys.version,
+        'database_url_set': bool(os.environ.get('DATABASE_URL')),
+        'environment': 'production' if os.environ.get('DATABASE_URL') else 'development',
+        'routes': [str(rule) for rule in app.url_map.iter_rules()]
+    })
+
 @app.route('/health')
 def health_check():
     try:
@@ -168,4 +193,7 @@ def health_check():
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    
+    # Get port from environment variable (Render sets this)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(debug=False, host='0.0.0.0', port=port)
