@@ -3,7 +3,7 @@ services:
     name: csv-data-app
     env: python
     buildCommand: "./build.sh"
-    startCommand: "gunicorn app:app"
+    startCommand: "gunicorn app:app --workers 2 --timeout 120 --keep-alive 2 --max-requests 1000 --preload"
     envVars:
       - key: FLASK_SECRET_KEY
         generateValue: true

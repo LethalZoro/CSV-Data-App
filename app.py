@@ -58,6 +58,21 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 # Initialize database
 db = SQLAlchemy(app)
 
+# Database initialization function
+def init_database():
+    """Initialize database tables"""
+    try:
+        with app.app_context():
+            db.create_all()
+            print("✅ Database tables initialized successfully")
+            return True
+    except Exception as e:
+        print(f"❌ Error initializing database: {e}")
+        return False
+
+# Initialize database on startup
+init_database()
+
 # Database Models
 class CSVUpload(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -105,9 +120,9 @@ def index():
 def upload_file():
     upload_record = None
     try:
-        # Ensure database is initialized
-        with app.app_context():
-            db.create_all()
+        # Ensure database is initialized (redundant safety check)
+        if not init_database():
+            return jsonify({'success': False, 'message': 'Database initialization failed'})
         
         if 'file' not in request.files:
             return jsonify({'success': False, 'message': 'No file selected'})
@@ -247,6 +262,11 @@ def debug_info():
         'routes': [str(rule) for rule in app.url_map.iter_rules()]
     })
 
+@app.route('/ping')
+def ping():
+    """Simple ping endpoint that always works"""
+    return "pong", 200
+
 @app.route('/status')
 def simple_status():
     """Simple status endpoint that doesn't require database"""
@@ -284,6 +304,44 @@ def health_check():
         status['components']['filesystem'] = f'error: {str(e)}'
     
     return jsonify(status), http_status
+
+def startup_health_check():
+    """Perform startup health checks"""
+    print("🔍 Performing startup health checks...")
+    
+    # Check 1: Database connection
+    try:
+        with app.app_context():
+            db.engine.connect()
+        print("✅ Database connection: OK")
+    except Exception as e:
+        print(f"⚠️ Database connection: DEGRADED ({e})")
+    
+    # Check 2: Upload folder
+    try:
+        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+        test_file = os.path.join(app.config['UPLOAD_FOLDER'], 'startup_test.txt')
+        with open(test_file, 'w') as f:
+            f.write('test')
+        os.remove(test_file)
+        print("✅ Upload folder: OK")
+    except Exception as e:
+        print(f"❌ Upload folder: ERROR ({e})")
+    
+    # Check 3: Template folder
+    try:
+        template_path = os.path.join(app.template_folder, 'index.html')
+        if os.path.exists(template_path):
+            print("✅ Templates: OK")
+        else:
+            print("⚠️ Templates: index.html not found")
+    except Exception as e:
+        print(f"❌ Templates: ERROR ({e})")
+    
+    print("🚀 Startup health checks completed")
+
+# Run startup checks
+startup_health_check()
 
 if __name__ == '__main__':
     with app.app_context():
