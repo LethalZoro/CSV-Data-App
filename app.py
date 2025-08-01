@@ -99,12 +99,33 @@ class CSVData(db.Model):
     upload = db.relationship('CSVUpload', backref=db.backref('data_rows', lazy=True))
     
     def to_dict(self):
+        try:
+            row_data = json.loads(self.row_data)
+        except json.JSONDecodeError as e:
+            # If JSON parsing fails, return an error indicator
+            row_data = {'error': f'Invalid JSON data: {str(e)}', 'raw_data': self.row_data[:100]}
+        
         return {
             'id': self.id,
             'upload_id': self.upload_id,
-            'row_data': json.loads(self.row_data),
+            'row_data': row_data,
             'row_number': self.row_number
         }
+
+def clean_data_for_json(data):
+    """Clean data to make it JSON serializable"""
+    if isinstance(data, dict):
+        return {key: clean_data_for_json(value) for key, value in data.items()}
+    elif isinstance(data, list):
+        return [clean_data_for_json(item) for item in data]
+    elif pd.isna(data):
+        return None
+    elif isinstance(data, (pd.Timestamp, datetime)):
+        return data.isoformat()
+    elif isinstance(data, (int, float)) and pd.isna(data):
+        return None
+    else:
+        return data
 
 # Allowed file extensions
 ALLOWED_EXTENSIONS = {'csv'}
@@ -153,9 +174,12 @@ def upload_file():
                     
                     # Store each row in the database
                     for index, row in df.iterrows():
+                        # Convert row to dict and clean it for JSON
+                        row_dict = clean_data_for_json(row.to_dict())
+                        
                         row_data = CSVData(
                             upload_id=upload_record.id,
-                            row_data=json.dumps(row.to_dict()),
+                            row_data=json.dumps(row_dict),
                             row_number=index + 1
                         )
                         db.session.add(row_data)
@@ -261,6 +285,47 @@ def debug_info():
         'environment': 'production' if os.environ.get('DATABASE_URL') else 'development',
         'routes': [str(rule) for rule in app.url_map.iter_rules()]
     })
+
+@app.route('/fix-data')
+def fix_existing_data():
+    """Fix existing data with NaN issues"""
+    try:
+        fixed_count = 0
+        error_count = 0
+        
+        # Get all CSV data records
+        all_records = CSVData.query.all()
+        
+        for record in all_records:
+            try:
+                # Try to parse the existing JSON
+                json.loads(record.row_data)
+            except json.JSONDecodeError:
+                # If it fails, it might have NaN values
+                try:
+                    # Try to fix it by replacing NaN with null
+                    fixed_data = record.row_data.replace('NaN', 'null')
+                    # Test if the fixed version is valid JSON
+                    json.loads(fixed_data)
+                    # If valid, update the record
+                    record.row_data = fixed_data
+                    fixed_count += 1
+                except:
+                    error_count += 1
+        
+        # Commit the changes
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Fixed {fixed_count} records, {error_count} records still have errors',
+            'fixed_count': fixed_count,
+            'error_count': error_count
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': f'Error fixing data: {str(e)}'})
 
 @app.route('/ping')
 def ping():

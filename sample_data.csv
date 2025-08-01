@@ -1,6 +1,6 @@
 id,name,email,age,department,salary,city,country,hire_date,status
 1,John Smith,john.smith@email.com,28,Engineering,75000,New York,USA,2023-01-15,Active
-2,Sarah Johnson,sarah.johnson@email.com,32,Marketing,65000,Los Angeles,USA,2022-08-20,Active
+2,Sarah Johnson,NaN,32,Marketing,65000,Los Angeles,USA,2022-08-20,Active
 3,Michael Brown,michael.brown@email.com,45,Finance,85000,Chicago,USA,2021-03-10,Active
 4,Emily Davis,emily.davis@email.com,29,HR,58000,Houston,USA,2023-05-12,Active
 5,David Wilson,david.wilson@email.com,37,Engineering,92000,Seattle,USA,2020-11-08,Active
